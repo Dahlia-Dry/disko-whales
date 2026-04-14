@@ -1,0 +1,15 @@
+.DS_Store
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+
+# Local virtual environment
+.venv/
+
+# Jupyter artifacts
+.ipynb_checkpoints/
+
+# Common local tooling caches
+.pytest_cache/
+.mypy_cache/

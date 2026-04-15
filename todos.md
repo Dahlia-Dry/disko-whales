@@ -1,0 +1,12 @@
+# Task List
+- literature review
+- convert data to .wav files (Tilde)
+- collect known samples from disko site (Dahlia)
+- figure out how to extract features (Dahlia, see disko_sound.py and feature_extraction.ipynb)
+- preprocessing/noise removal of .wav files ()
+- write call detection code
+- write classification/matching code
+- integrate into one unified analysis pipeline
+- validation of classifications 
+- data analysis (plots+stats)
+- make presentation

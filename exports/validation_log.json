@@ -1,73 +1,73 @@
 [
   {
     "event": "Oo",
-    "probability": 2.200572026822556e-07,
+    "probability": 0.00025011663092300296,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Mn",
-    "probability": 0.0007991851307451725,
+    "probability": 0.0985204428434372,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Eg",
-    "probability": 9.358620332022838e-07,
+    "probability": 0.009893370792269707,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Be",
-    "probability": 7.607662837472162e-07,
+    "probability": 0.00011478686064947397,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Upcall",
-    "probability": 1.2613560102181509e-05,
+    "probability": 3.482400279608555e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Bp",
-    "probability": 0.0008162074373103678,
+    "probability": 0.008257434703409672,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Call",
-    "probability": 3.823296594873682e-07,
+    "probability": 0.000803876668214798,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Gunshot",
-    "probability": 3.416102600795057e-08,
+    "probability": 2.009832860494498e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Echolocation",
-    "probability": 1.0266418115634224e-07,
+    "probability": 7.498003833461553e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Bm",
-    "probability": 1.0210927939624526e-05,
+    "probability": 0.00026583889848552644,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Whistle",
-    "probability": 6.681661943730433e-07,
+    "probability": 0.00029803140205331147,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Ba",
-    "probability": 1.4927488578564407e-08,
+    "probability": 0.0032207053154706955,
     "predicted": false,
     "user_validated": false
   }

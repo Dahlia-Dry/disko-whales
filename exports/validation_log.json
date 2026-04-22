@@ -1,73 +1,73 @@
 [
   {
     "event": "Oo",
-    "probability": 0.00025011663092300296,
+    "probability": 0.0004324105684645474,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Mn",
-    "probability": 0.0985204428434372,
+    "probability": 0.023243989795446396,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Eg",
-    "probability": 0.009893370792269707,
+    "probability": 0.0067924801260232925,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Be",
-    "probability": 0.00011478686064947397,
+    "probability": 1.9607816284406e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Upcall",
-    "probability": 3.482400279608555e-05,
+    "probability": 3.09484385070391e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Bp",
-    "probability": 0.008257434703409672,
+    "probability": 0.005461087450385094,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Call",
-    "probability": 0.000803876668214798,
+    "probability": 0.0003659240319393575,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Gunshot",
-    "probability": 2.009832860494498e-05,
+    "probability": 1.8660983187146485e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Echolocation",
-    "probability": 7.498003833461553e-05,
+    "probability": 6.712929462082684e-05,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Bm",
-    "probability": 0.00026583889848552644,
+    "probability": 0.00015219385386444628,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Whistle",
-    "probability": 0.00029803140205331147,
+    "probability": 0.00032087016734294593,
     "predicted": false,
     "user_validated": false
   },
   {
     "event": "Ba",
-    "probability": 0.0032207053154706955,
+    "probability": 0.0005766422837041318,
     "predicted": false,
     "user_validated": false
   }

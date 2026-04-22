@@ -42,17 +42,8 @@ PREPROCESSING_STEPS = {
 }
 ```
 
-### 3) Add a button + callback mapping in dashboard.py
-- Add button in the preprocessing section:
-```python
-html.Button("My Step", id="filter-my-step", n_clicks=0)
-```
-- Add mapping in `update_preprocessing`:
-```python
-filter_name = {
-	"filter-my-step": "my_step",
-}.get(triggered, "raw")
-```
+### 3) Use it in the dashboard
+`dashboard.py` automatically reads model names from `PREPROCESSING_STEPS` and renders them as buttons in the `Preprocessing` section.
 
 Note: `Revert To Original` always restores the originally uploaded `.wav`.
 
@@ -69,7 +60,6 @@ Required function contract:
 	"predicted": [...],
 }
 ```
-
 Rules:
 - `event`: class labels (for example, `"humpback whale call"`)
 - `probability`: float score per event
@@ -86,26 +76,18 @@ def model_my_classifier(wav_bytes: bytes) -> dict:
 		"predicted": [1, 0],
 	}
 ```
-
 ### 2) Register it in CLASSIFICATION_MODELS
 In `classification.py`, add:
 ```python
 CLASSIFICATION_MODELS = {
-	"placeholder": model_placeholder,
-	"template_rule_based": model_template_rule_based,
+	"google_model_simple": google_model_simple, #example
 	"my_classifier": model_my_classifier,
 }
 ```
+### 3) Use it in the dashboard
+`dashboard.py` automatically reads model names from `CLASSIFICATION_MODELS` and renders them as buttons in the `Detection & Classification` section.
 
-### 3) Select model in dashboard.py
-Call:
-```python
-run_classification_model(wav_bytes, model_name="my_classifier")
-```
-
-`run_classification_model` dispatches by name, the same way preprocessing dispatches filters.
-
-### Dashboard behavior
+### Prediction Validation
 `dashboard.py` already converts this dict into the classification table and appends a `Validated` checkbox column for human 0/1 review.
 
 ## Troubleshooting

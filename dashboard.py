@@ -25,7 +25,7 @@ import soundfile as sf
 
 from classification import CLASSIFICATION_MODELS, run_classification_model
 from disko_sound import Disko_Sound
-from preprocessing import run_preprocessing_step
+from preprocessing import PREPROCESSING_STEPS, run_preprocessing_step
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -43,6 +43,38 @@ UPLOAD_STYLE = {
     "marginBottom": "16px",
     "color": "#555",
 }
+
+SELECTOR_BUTTON_STYLE = {
+    "padding": "8px 12px",
+    "border": "1px solid #ccc",
+    "borderRadius": "6px",
+    "cursor": "pointer",
+}
+
+
+def humanize_name(name: str):
+    return name.replace("_", " ").replace("-", " ").title()
+
+
+def render_selector_buttons(option_names, selected_value, button_type, extra_buttons=None):
+    buttons = []
+    for option_name in option_names:
+        is_active = option_name == selected_value
+        buttons.append(
+            html.Button(
+                humanize_name(option_name),
+                id={"type": button_type, "index": option_name},
+                n_clicks=0,
+                style={
+                    **SELECTOR_BUTTON_STYLE,
+                    "backgroundColor": "#2f6fdd" if is_active else "#ffffff",
+                    "color": "#ffffff" if is_active else "#333333",
+                },
+            )
+        )
+    if extra_buttons:
+        buttons.extend(extra_buttons)
+    return buttons
 
 app.layout = html.Div(
     style={
@@ -76,10 +108,20 @@ app.layout = html.Div(
                     style={"color": "#666", "fontSize": "13px", "marginTop": 0},
                 ),
                 html.Div(
-                    [
-                        html.Button("Raw", id="filter-raw", n_clicks=0, style={"padding": "10px 14px"}),
-                        html.Button("Revert To Original", id="filter-revert", n_clicks=0, style={"padding": "10px 14px"}),
-                    ],
+                    render_selector_buttons(
+                        PREPROCESSING_STEPS.keys(),
+                        "raw",
+                        "preprocessing-step-btn",
+                        extra_buttons=[
+                            html.Button(
+                                "Revert To Original",
+                                id="filter-revert",
+                                n_clicks=0,
+                                style={**SELECTOR_BUTTON_STYLE, "backgroundColor": "#ffffff", "color": "#333333"},
+                            )
+                        ],
+                    ),
+                    id="preprocessing-buttons",
                     style={"display": "flex", "gap": "12px", "flexWrap": "wrap", "marginBottom": "8px"},
                 ),
                 html.Div(id="preprocessing-status", style={"color": "#444", "fontSize": "13px"}),
@@ -144,7 +186,7 @@ app.layout = html.Div(
         dcc.Store(id="processed-audio-store"),
         dcc.Store(id="selection-store"),
         dcc.Store(id="filter-store", data={"filter_name": "raw", "label": "Raw audio"}),
-        dcc.Store(id="classification-model-store", data="placeholder"),
+        dcc.Store(id="classification-model-store", data=None),
         dcc.Store(id="detection-store"),
         dcc.Store(id="validation-store", data={}),
     ],
@@ -160,13 +202,6 @@ def decode_audio(contents: str):
     buf = io.BytesIO(raw)
     y, sr = librosa.load(buf, sr=None, mono=True)
     return y, sr, raw
-
-
-def encode_audio(y: np.ndarray, sr: int):
-    buf = io.BytesIO()
-    sf.write(buf, y, sr, format="WAV")
-    encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return f"data:audio/wav;base64,{encoded}"
 
 
 def decode_wav_bytes(wav_bytes: bytes):
@@ -305,30 +340,17 @@ def make_spectrogram_figure(y: np.ndarray, sr: int):
     return fig
 
 
-def render_detection_panel(detection_rows, validation_store=None, selected_model="placeholder"):
+def render_detection_panel(detection_rows, validation_store=None, selected_model=None):
     detection_rows = detection_rows or []
     validation_store = validation_store or {}
     sorted_rows = sorted(detection_rows, key=lambda row: row["probability"], reverse=True)
     top_row = sorted_rows[0] if sorted_rows else None
 
-    model_buttons = []
-    for model_name in CLASSIFICATION_MODELS:
-        is_active = model_name == selected_model
-        model_buttons.append(
-            html.Button(
-                model_name,
-                id={"type": "classification-model-btn", "index": model_name},
-                n_clicks=0,
-                style={
-                    "padding": "8px 12px",
-                    "border": "1px solid #ccc",
-                    "borderRadius": "6px",
-                    "backgroundColor": "#2f6fdd" if is_active else "#ffffff",
-                    "color": "#ffffff" if is_active else "#333333",
-                    "cursor": "pointer",
-                },
-            )
-        )
+    model_buttons = render_selector_buttons(
+        CLASSIFICATION_MODELS.keys(),
+        selected_model,
+        "classification-model-btn",
+    )
 
     table_rows = []
     for row in sorted_rows:
@@ -360,7 +382,9 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
             )
         )
 
-    subtitle = "Detection placeholder is active. Table is ready; model output will appear once detection code is added."
+    subtitle = "Choose a classification model below to run detection on the current selection."
+    if selected_model and not top_row:
+        subtitle = f"Model '{humanize_name(selected_model)}' ran, but produced no rows for the current selection."
     if top_row:
         subtitle = f"Top predicted class: {top_row['event']} ({top_row['probability']:.4f})."
 
@@ -400,11 +424,33 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
 
 
 @app.callback(
+    Output("preprocessing-buttons", "children"),
+    Input("filter-store", "data"),
+)
+def update_preprocessing_buttons(filter_store):
+    selected_filter = (filter_store or {}).get("filter_name", "raw")
+    return render_selector_buttons(
+        PREPROCESSING_STEPS.keys(),
+        selected_filter,
+        "preprocessing-step-btn",
+        extra_buttons=[
+            html.Button(
+                "Revert To Original",
+                id="filter-revert",
+                n_clicks=0,
+                style={**SELECTOR_BUTTON_STYLE, "backgroundColor": "#ffffff", "color": "#333333"},
+            )
+        ],
+    )
+
+
+@app.callback(
     Output("audio-player", "children"),
     Output("audio-store", "data"),
     Output("processed-audio-store", "data"),
     Output("preprocessing-status", "children"),
     Output("filter-store", "data", allow_duplicate=True),
+    Output("classification-model-store", "data", allow_duplicate=True),
     Output("selection-store", "data", allow_duplicate=True),
     Output("validation-store", "data", allow_duplicate=True),
     Output("export-status", "children"),
@@ -415,6 +461,7 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
 def on_upload(contents, filename):
     if contents is None:
         return (
+            dash.no_update,
             dash.no_update,
             dash.no_update,
             dash.no_update,
@@ -449,33 +496,33 @@ def on_upload(contents, filename):
         "original_wav_b64": base64.b64encode(raw).decode("utf-8"),
     }
     processed_store = serialize_audio(y, sr)
-    return audio_player, store, processed_store, "Raw audio", {"filter_name": "raw", "label": "Raw audio"}, None, {}, "Exports will reflect the current processed audio and validations."
+    return audio_player, store, processed_store, "Raw audio", {"filter_name": "raw", "label": "Raw audio"}, None, None, {}, "Exports will reflect the current processed audio and validations."
 
 
 @app.callback(
     Output("processed-audio-store", "data", allow_duplicate=True),
     Output("preprocessing-status", "children", allow_duplicate=True),
     Output("filter-store", "data", allow_duplicate=True),
-    Input("filter-raw", "n_clicks"),
+    Input({"type": "preprocessing-step-btn", "index": ALL}, "n_clicks"),
     Input("filter-revert", "n_clicks"),
     State("audio-store", "data"),
     prevent_initial_call=True,
 )
-def update_preprocessing(_raw_clicks, _revert_clicks, store):
+def update_preprocessing(_step_clicks, _revert_clicks, store):
     if not store:
         return dash.no_update, "Upload audio first.", dash.no_update
 
     triggered = dash.ctx.triggered_id
-    # Add new preprocessing steps here by mapping button id -> step name.
-    filter_name = {
-        "filter-revert": "revert",
-    }.get(triggered, "raw")
 
     original_wav_bytes = base64.b64decode(store["original_wav_b64"])
 
-    if filter_name == "revert":
+    if triggered == "filter-revert":
         y, sr = decode_wav_bytes(original_wav_bytes)
         return serialize_audio(y, sr), "Reverted to original uploaded WAV", {"filter_name": "raw", "label": "Raw audio"}
+
+    filter_name = "raw"
+    if isinstance(triggered, dict) and triggered.get("type") == "preprocessing-step-btn":
+        filter_name = triggered.get("index", "raw")
 
     processed_wav_bytes, label = run_preprocessing_step(original_wav_bytes, filter_name)
     y, sr = decode_wav_bytes(processed_wav_bytes)
@@ -601,11 +648,10 @@ def on_selection(processed_store, selected_data):
 @app.callback(
     Output("classification-model-store", "data"),
     Input({"type": "classification-model-btn", "index": ALL}, "n_clicks"),
-    State({"type": "classification-model-btn", "index": ALL}, "id"),
     State("classification-model-store", "data"),
     prevent_initial_call=True,
 )
-def update_selected_classification_model(_clicks, ids, current_model):
+def update_selected_classification_model(_clicks, current_model):
     triggered = dash.ctx.triggered_id
     if isinstance(triggered, dict) and triggered.get("type") == "classification-model-btn":
         return triggered.get("index", current_model)
@@ -615,16 +661,19 @@ def update_selected_classification_model(_clicks, ids, current_model):
 @app.callback(
     Output("detection-store", "data"),
     Output("classification-panel", "children"),
-    Input("processed-audio-store", "data"),
-    Input("selection-store", "data"),
     Input("classification-model-store", "data"),
+    State("processed-audio-store", "data"),
+    State("selection-store", "data"),
     State("validation-store", "data"),
     running=[
         (Output("detection-status", "children"), "Detection and classification running... please wait.", "Detection ready."),
     ],
     prevent_initial_call=True,
 )
-def run_detection_placeholder_callback(processed_store, selected_data, selected_model, validation_store):
+def run_detection_placeholder_callback(selected_model, processed_store, selected_data, validation_store):
+    if not selected_model:
+        return [], render_detection_panel([], validation_store, selected_model)
+
     y, sr = deserialize_audio(processed_store)
     if y is None or sr is None:
         return [], render_detection_panel([], validation_store, selected_model)

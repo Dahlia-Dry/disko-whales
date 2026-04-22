@@ -1,0 +1,74 @@
+[
+  {
+    "event": "Oo",
+    "probability": 2.200572026822556e-07,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Mn",
+    "probability": 0.0007991851307451725,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Eg",
+    "probability": 9.358620332022838e-07,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Be",
+    "probability": 7.607662837472162e-07,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Upcall",
+    "probability": 1.2613560102181509e-05,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Bp",
+    "probability": 0.0008162074373103678,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Call",
+    "probability": 3.823296594873682e-07,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Gunshot",
+    "probability": 3.416102600795057e-08,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Echolocation",
+    "probability": 1.0266418115634224e-07,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Bm",
+    "probability": 1.0210927939624526e-05,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Whistle",
+    "probability": 6.681661943730433e-07,
+    "predicted": false,
+    "user_validated": false
+  },
+  {
+    "event": "Ba",
+    "probability": 1.4927488578564407e-08,
+    "predicted": false,
+    "user_validated": false
+  }
+]

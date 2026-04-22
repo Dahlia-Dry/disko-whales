@@ -4,8 +4,9 @@
 __pycache__/
 *.py[cod]
 
-# Local virtual environment
+# Local virtual environments
 .venv/
+.venv-tf/
 
 # Jupyter artifacts
 .ipynb_checkpoints/

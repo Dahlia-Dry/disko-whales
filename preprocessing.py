@@ -1,66 +1,82 @@
+from __future__ import annotations
 import io
 import librosa
 import numpy as np
 import soundfile as sf
 from scipy.signal import butter, lfilter, medfilt
 
-# ---------------------------------------------------------
-# HELPER FUNCTIONS
-# ---------------------------------------------------------
+# --- INTERNAL UTILITIES ---
+
 def _decode_wav_bytes(wav_bytes: bytes):
-    # Safely load the audio
+    """Decodes raw bytes into a numpy array."""
     y, sr = librosa.load(io.BytesIO(wav_bytes), sr=None, mono=True)
-    return y, sr
+    return y.astype(np.float32), int(sr)
 
 def _encode_wav_bytes(y: np.ndarray, sr: int) -> bytes:
-    # Safely write the audio back to bytes
+    """Encodes numpy array to WAV bytes. PCM_16 is used to reduce data size."""
     buffer = io.BytesIO()
-    # PCM_16 keeps the file size small to prevent socket crashes
     sf.write(buffer, y, sr, format="WAV", subtype='PCM_16')
     buffer.seek(0)
     return buffer.getvalue()
 
-# ---------------------------------------------------------
-# PREPROCESSING STEPS (Must return exactly 'bytes')
-# ---------------------------------------------------------
-def filter_raw(wav_bytes: bytes) -> bytes:
-    """Returns the original file unchanged."""
-    return wav_bytes
+# --- FILTERING LOGIC ---
 
-def filter_whale_clean(wav_bytes: bytes) -> bytes:
-    """Cleans the audio and strictly returns bytes."""
-    y, sr = _decode_wav_bytes(wav_bytes)
-    
-    # 1. Limit to 60 seconds to prevent file-size crashes on Mac sockets
-    if len(y) > sr * 60:
-        y = y[:sr * 60]
-        
+def apply_whale_filters(y: np.ndarray, sr: int) -> np.ndarray:
+    """Cleans audio by removing noise and applying a bandpass filter."""
     y = np.nan_to_num(y)
-
-    # 2. Spectral Subtraction (Remove background hiss)
+    
+    # 1. Spectral Subtraction (Noise reduction)
     stft = librosa.stft(y)
     mag, phase = librosa.magphase(stft)
     noise_est = np.mean(mag[:, :min(mag.shape[1], 10)], axis=1, keepdims=True)
     mag_clean = np.maximum(mag - 1.5 * noise_est, 0.0)
     y = librosa.istft(mag_clean * phase)
-
-    # 3. Band-pass (10Hz to 48kHz)
+    
+    # 2. Band-pass (Standard whale frequency range)
     nyq = 0.5 * sr
     low, high = max(0.001, 10 / nyq), min(0.999, 48000 / nyq)
     b, a = butter(5, [low, high], btype='band')
     y = lfilter(b, a, y)
-
-    # 4. Normalize
+    
+    # 3. Cleanup & Normalization
     y = medfilt(y, kernel_size=3)
     y = librosa.util.normalize(np.nan_to_num(y))
-    
-    # STRICT RETURN: Only bytes
-    return _encode_wav_bytes(y, sr)
+    return y
 
-# ---------------------------------------------------------
-# DASHBOARD REGISTRY
-# ---------------------------------------------------------
+# --- PREPROCESSING STEPS REGISTRY ---
+
+def filter_raw(wav_bytes: bytes) -> bytes:
+    """Returns the original audio unchanged."""
+    return wav_bytes
+
+def filter_whale_clean(wav_bytes: bytes) -> bytes:
+    """Full cleaning pipeline."""
+    y, sr = _decode_wav_bytes(wav_bytes)
+    
+    # CRITICAL: Mac Socket Safety
+    # If the file is huge, the socket will throw OSError [Errno 22].
+    # We limit the dashboard preview to the first 60 seconds.
+    if len(y) > sr * 60:
+        y = y[:sr * 60]
+        
+    y_filtered = apply_whale_filters(y, sr)
+    return _encode_wav_bytes(y_filtered, sr)
+
+# This dictionary is read by dashboard.py to generate buttons
 PREPROCESSING_STEPS = {
     "raw": filter_raw,
     "whale_clean": filter_whale_clean,
 }
+
+# --- MANDATORY DASHBOARD INTERFACE ---
+
+def run_preprocessing_step(wav_bytes: bytes, step_name: str) -> bytes:
+    """
+    This is the specific function dashboard.py line 28 is looking for.
+    It must take bytes and return bytes.
+    """
+    # Look up the function in the dictionary, default to filter_raw if not found
+    func = PREPROCESSING_STEPS.get(step_name, filter_raw)
+    
+    # Execute the function and return the resulting bytes
+    return func(wav_bytes)

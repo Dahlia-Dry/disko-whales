@@ -1,4 +1,4 @@
-Preprocessing interface for dashboard.py.
+'''Preprocessing interface for dashboard.py.
 
 Contract:
 - Input: .wav file bytes
@@ -6,7 +6,7 @@ Contract:
 
 To add a new preprocessing step:
 1. Create a function with signature: `func(wav_bytes: bytes) -> bytes`
-2. Register it in PREPROCESSING_STEPS
+2. Register it in PREPROCESSING_STEPS'''
 
 from __future__ import annotations
 

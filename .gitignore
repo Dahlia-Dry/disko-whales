@@ -4,8 +4,9 @@
 __pycache__/
 *.py[cod]
 
-# Local virtual environment
+# Local virtual environments
 .venv/
+.venv-tf/
 
 # Jupyter artifacts
 .ipynb_checkpoints/
@@ -13,3 +14,6 @@ __pycache__/
 # Common local tooling caches
 .pytest_cache/
 .mypy_cache/
+
+#dash stuff
+exports/

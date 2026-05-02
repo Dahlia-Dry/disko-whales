@@ -56,27 +56,27 @@ except Exception:
 # ── Whale data ────────────────────────────────────────────────────────────────
 whale_data = {
     "Narwhal": {
-        "call_types": "...",
-        "frequency_range": "... – ...",
-        "typical_duration": "... – ...",
+        "call_types": "clicks, whistles, pulses, knocks",
+        "frequency_range": "generally 300 Hz-150 kHz",
+        "typical_duration": "clicks last <0.1s, whistles and pulses last 0.1-2s",
         "example_files": [
             "known_samples/narwhal/Narwhal.wav",
             "known_samples/narwhal/narwhal-voicesofthesea.wav",
         ],
     },
     "Fin whale": {
-        "call_types": "...",
-        "frequency_range": "... – ...",
-        "typical_duration": "... – ...",
+        "call_types": "pulses, downsweeps, songs",
+        "frequency_range": "typically 15-40 Hz, sometimes up to 100 Hz",
+        "typical_duration": "songs can last minutes-hours, pulses last 0.5-2s",
         "example_files": [
             "known_samples/fin/fin.wav",
             "known_samples/fin/finWhale.wav",
         ],
     },
     "Humpback whale": {
-        "call_types": "...",
-        "frequency_range": "... – ...",
-        "typical_duration": "... – ...",
+        "call_types": "structured songs, moans, grunts, squeaks",
+        "frequency_range": "generally 20 Hz to 10 kHz, with most energy in 100 Hz to 4 kHz",
+        "typical_duration": "songs can last 10-30 minutes, individual calls typically 0.5-5s",
         "example_files": [
             "known_samples/humpback/humpback_bubblenetFeeding.wav",
             "known_samples/humpback/humpback_socialSounds.wav",
@@ -85,9 +85,9 @@ whale_data = {
         ],
     },
     "Beluga whale": {
-        "call_types": "...",
-        "frequency_range": "... – ...",
-        "typical_duration": "... – ...",
+        "call_types": "clicks, whistles, chirps, pulses/bursts",
+        "frequency_range": "generally 1-120 kHz, with whistles often in 1-20 kHz range",
+        "typical_duration": "clicks last <0.1s, whistles and calls last <5s",
         "example_files": [
             "known_samples/beluga/beluga_clicks.wav",
             "known_samples/beluga/beluga_socialSounds.wav",

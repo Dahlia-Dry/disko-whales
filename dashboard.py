@@ -106,22 +106,19 @@ def humanize_name(name: str):
     return name.replace("_", " ").replace("-", " ").title()
 
 
-def render_selector_buttons(option_names, selected_value, button_type, extra_buttons=None, about_map=None):
+def render_selector_buttons(option_names, selected_value, button_type, extra_buttons=None):
     buttons = []
     for option_name in option_names:
         is_active = option_name == selected_value
-        about_text = (about_map or {}).get(option_name, "")
         buttons.append(
             html.Button(
                 humanize_name(option_name),
                 id={"type": button_type, "index": option_name},
                 n_clicks=0,
-                title=about_text or None,
                 style={
                     **SELECTOR_BUTTON_STYLE,
                     "backgroundColor": "#2f6fdd" if is_active else "#ffffff",
                     "color": "#ffffff" if is_active else "#333333",
-                    "cursor": "help" if about_text else "pointer",
                 },
             )
         )
@@ -521,7 +518,6 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
         CLASSIFICATION_MODELS.keys(),
         selected_model,
         "classification-model-btn",
-        about_map=model_about_map,
     )
 
     table_rows = []
@@ -564,7 +560,20 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
         [
             html.H3("Detection & Classification", style={"marginBottom": "8px"}),
             html.P("Available classification models:", style={"color": "#444", "marginBottom": "6px"}),
-            html.Div(model_buttons, style={"display": "flex", "gap": "8px", "flexWrap": "wrap", "marginBottom": "10px"}),
+            html.Div(model_buttons, style={"display": "flex", "gap": "8px", "flexWrap": "wrap", "marginBottom": "6px"}),
+            html.Div(
+                model_about_map.get(selected_model, "") if selected_model else "",
+                style={
+                    "fontSize": "13px",
+                    "color": "#555",
+                    "backgroundColor": "#f0f4ff",
+                    "border": "1px solid #ccd6f6",
+                    "borderRadius": "6px",
+                    "padding": "8px 12px",
+                    "marginBottom": "10px",
+                    "display": "block" if (selected_model and model_about_map.get(selected_model)) else "none",
+                },
+            ),
             html.P(
                 subtitle,
                 style={"color": "#444", "marginTop": 0},

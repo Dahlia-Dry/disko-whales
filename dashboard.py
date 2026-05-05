@@ -1,5 +1,5 @@
 """
-Whale Sound Analyzer — Dash dashboard
+Disko Audio Explorer — Dash dashboard
   • Upload a .wav file
   • Play it back in the browser
   • View the spectrogram
@@ -23,14 +23,17 @@ import numpy as np
 import librosa
 import pandas as pd
 import soundfile as sf
-
 from classification import CLASSIFICATION_MODELS, run_classification_model, get_classification_model_about
 from disko_sound import Disko_Sound
-from preprocessing import PREPROCESSING_STEPS, run_preprocessing_step
+from preprocessing import PREPROCESSING_STEPS, filter_crop, run_preprocessing_step
 
+#SETTINGS
 CACHE_DIR = os.path.join(tempfile.gettempdir(), "disko_whales_cache")
-MAX_PLOT_DURATION_SECONDS = 15 * 60
+MAX_PLOT_DURATION_SECONDS = 15*60
 PLOT_TARGET_SR = 4000
+DEFAULT_LOWPASS_CUTOFF_HZ = 1000
+DEFAULT_HIGHPASS_CUTOFF_HZ = 100
+CLIP_ENDS = 0
 
 # ── Whale catalog data ─────────────────────────────────────────────────────────
 
@@ -79,7 +82,7 @@ WHALE_DATA = {
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
-app = dash.Dash(__name__, title="Whale Sound Analyzer")
+app = dash.Dash(__name__, title="Disko Audio Explorer", suppress_callback_exceptions=True)
 
 UPLOAD_STYLE = {
     "width": "100%",
@@ -104,6 +107,26 @@ SELECTOR_BUTTON_STYLE = {
 
 def humanize_name(name: str):
     return name.replace("_", " ").replace("-", " ").title()
+
+
+def make_audio_player(wav_bytes: bytes, filename: str, sr: int) -> html.Div:
+    """Create an audio player from WAV bytes with base64 data URI."""
+    duration_seconds = duration_from_wav_bytes(wav_bytes)
+    data_uri = f"data:audio/wav;base64,{base64.b64encode(wav_bytes).decode('utf-8')}"
+    return html.Div(
+        [
+            html.P(
+                f"▶  {filename}   |   {sr:,} Hz   |   {duration_seconds:.2f} s",
+                style={"margin": "8px 0 4px", "fontSize": "13px", "color": "#444"},
+            ),
+            html.Audio(
+                src=data_uri,
+                controls=True,
+                style={"width": "100%"},
+            ),
+        ],
+        style={"marginBottom": "8px"},
+    )
 
 
 def render_selector_buttons(option_names, selected_value, button_type, extra_buttons=None):
@@ -149,6 +172,51 @@ app.layout = html.Div(
         ),
         # ── Audio player ────────────────────────────────────────────────────────
         html.Div(id="audio-player"),
+        # ── Trim Audio (Waveform-based) ─────────────────────────────────────────
+        html.Div(
+            id="trim-panel",
+            style={"display": "none"},
+            children=[
+                html.H3("Trim Audio", style={"marginBottom": "6px"}),
+                html.P(
+                    "Use Box Select tool (□) on the waveform below to select a region to keep. Click Apply Trim to crop and discard the rest.",
+                    style={"color": "#666", "fontSize": "13px", "marginTop": 0},
+                ),
+                html.Div(
+                    html.P("Trim Waveform", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px", "color": "#666"}),
+                    style={"marginBottom": "4px"},
+                ),
+                dcc.Graph(
+                    id="trim-waveform",
+                    figure=go.Figure(
+                        layout=go.Layout(
+                            height=160,
+                            xaxis={"title": "Time (s)"},
+                            yaxis={"title": "Amplitude"},
+                            paper_bgcolor="#fafafa",
+                            plot_bgcolor="#f5f8ff",
+                        )
+                    ),
+                    config={
+                        "modeBarButtonsToAdd": ["select2d"],
+                        "displayModeBar": True,
+                        "scrollZoom": True,
+                    },
+                ),
+                html.Div(
+                    [
+                        html.Button(
+                            "Apply Trim from Selection",
+                            id="trim-apply-btn",
+                            n_clicks=0,
+                            style={**SELECTOR_BUTTON_STYLE, "backgroundColor": "#2f6fdd", "color": "#fff"},
+                        ),
+                    ],
+                    style={"display": "flex", "gap": "8px", "marginTop": "8px"},
+                ),
+                html.Div(id="trim-status", style={"color": "#444", "fontSize": "13px", "marginTop": "6px"}),
+            ],
+        ),
         # ── Preprocessing ───────────────────────────────────────────────────────
         html.Div(
             [
@@ -173,6 +241,42 @@ app.layout = html.Div(
                     ),
                     id="preprocessing-buttons",
                     style={"display": "flex", "gap": "12px", "flexWrap": "wrap", "marginBottom": "8px"},
+                ),
+                html.Div(
+                    [
+                        html.Span("Low pass cutoff:", style={"fontSize": "13px", "color": "#444"}),
+                        dcc.Input(
+                            id="lowpass-cutoff-hz",
+                            type="number",
+                            value=DEFAULT_LOWPASS_CUTOFF_HZ,
+                            min=1,
+                            max=24000,
+                            step=1,
+                            debounce=True,
+                            style={"width": "90px", "padding": "4px 8px", "border": "1px solid #ccc", "borderRadius": "4px", "fontSize": "13px"},
+                        ),
+                        html.Span("Hz", style={"fontSize": "13px", "color": "#444"}),
+                    ],
+                    id="lowpass-controls",
+                    style={"display": "none", "alignItems": "center", "gap": "8px", "marginBottom": "8px"},
+                ),
+                html.Div(
+                    [
+                        html.Span("High pass cutoff:", style={"fontSize": "13px", "color": "#444"}),
+                        dcc.Input(
+                            id="highpass-cutoff-hz",
+                            type="number",
+                            value=DEFAULT_HIGHPASS_CUTOFF_HZ,
+                            min=1,
+                            max=24000,
+                            step=1,
+                            debounce=True,
+                            style={"width": "90px", "padding": "4px 8px", "border": "1px solid #ccc", "borderRadius": "4px", "fontSize": "13px"},
+                        ),
+                        html.Span("Hz", style={"fontSize": "13px", "color": "#444"}),
+                    ],
+                    id="highpass-controls",
+                    style={"display": "none", "alignItems": "center", "gap": "8px", "marginBottom": "8px"},
                 ),
                 html.Div(id="preprocessing-status", style={"color": "#444", "fontSize": "13px"}),
             ],
@@ -275,6 +379,7 @@ app.layout = html.Div(
         dcc.Store(id="audio-store"),
         dcc.Store(id="processed-audio-store"),
         dcc.Store(id="selection-store"),
+        dcc.Store(id="trim-selection-store"),
         dcc.Store(id="filter-store", data={"filter_name": "raw", "label": "Raw audio"}),
         dcc.Store(id="classification-model-store", data=None),
         dcc.Store(id="detection-store"),
@@ -384,6 +489,28 @@ def get_selected_segment(y: np.ndarray, sr: int, selected_data: dict | None):
         "used_full_signal": False,
     }
 
+
+def get_auto_spectrogram_ceiling(freqs: np.ndarray, spectrogram_db: np.ndarray) -> float:
+    """Estimate a useful upper frequency bound from cumulative spectral energy."""
+    if freqs.size == 0 or spectrogram_db.size == 0:
+        return 0.0
+
+    # Convert dB values to linear power so energy can be accumulated by frequency.
+    power = np.power(10.0, spectrogram_db / 10.0)
+    per_freq_energy = np.mean(power, axis=1)
+    total_energy = float(np.sum(per_freq_energy))
+    if total_energy <= 0:
+        return float(freqs[-1])
+
+    cumulative = np.cumsum(per_freq_energy) / total_energy
+    idx = int(np.searchsorted(cumulative, 0.995, side="left"))
+    idx = max(0, min(idx, len(freqs) - 1))
+
+    nyquist = float(freqs[-1])
+    padded = float(freqs[idx]) * 1.15
+    min_ceiling = min(300.0, nyquist)
+    return min(nyquist, max(min_ceiling, padded))
+
 def render_spectrogram_png(y: np.ndarray, sr: int, selected_data: dict | None):
     n_fft = 2048
     hop = 512
@@ -391,10 +518,10 @@ def render_spectrogram_png(y: np.ndarray, sr: int, selected_data: dict | None):
     spectrogram_db = librosa.amplitude_to_db(np.abs(stft), ref=np.max)
     times = librosa.frames_to_time(np.arange(spectrogram_db.shape[1]), sr=sr, hop_length=hop)
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    max_freq = get_auto_spectrogram_ceiling(freqs, spectrogram_db)
 
     fig, ax = plt.subplots(figsize=(12, 4), dpi=160)
     mesh = ax.pcolormesh(times, freqs, spectrogram_db, shading="auto", cmap="viridis", vmin=-80, vmax=0)
-    max_freq = min(int(freqs[-1]), 8000)
     ax.set_ylim(0, max_freq)
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency (Hz)")
@@ -452,7 +579,7 @@ def make_spectrogram_figure(y: np.ndarray, sr: int):
         np.arange(S_db.shape[1]), sr=sr, hop_length=hop
     )
     freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-    max_freq = min(int(freqs[-1]), 8000)
+    max_freq = get_auto_spectrogram_ceiling(freqs, S_db)
 
     fig = go.Figure(
         go.Heatmap(
@@ -550,7 +677,7 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
             )
         )
 
-    subtitle = "Choose a classification model below to run detection on the current selection."
+    subtitle = "Choose a classification model to run detection on the current selection."
     if selected_model and not top_row:
         subtitle = f"Model '{humanize_name(selected_model)}' ran, but produced no rows for the current selection."
     if top_row:
@@ -712,6 +839,7 @@ def update_preprocessing_buttons(filter_store):
     Output("selection-store", "data", allow_duplicate=True),
     Output("validation-store", "data", allow_duplicate=True),
     Output("export-status", "children"),
+    Output("trim-panel", "style"),
     Input("upload-audio", "contents"),
     State("upload-audio", "filename"),
     prevent_initial_call=True,
@@ -719,39 +847,40 @@ def update_preprocessing_buttons(filter_store):
 def on_upload(contents, filename):
     if contents is None:
         return (
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
-            dash.no_update,
+            dash.no_update, dash.no_update, dash.no_update, dash.no_update,
+            dash.no_update, dash.no_update, dash.no_update, dash.no_update,
+            dash.no_update, dash.no_update,
         )
 
     _header, b64 = contents.split(",", 1)
-    raw = base64.b64decode(b64)
+    uploaded_raw = base64.b64decode(b64)
+    raw = uploaded_raw
+
+    # Auto-trim upload edges before any first waveform rendering if configured.
+    clip_seconds = max(0.0, float(CLIP_ENDS))
+    clip_status = ""
+    if clip_seconds > 0:
+        uploaded_duration = duration_from_wav_bytes(uploaded_raw)
+        if uploaded_duration > 2.0 * clip_seconds:
+            raw = filter_crop(
+                uploaded_raw,
+                start_s=clip_seconds,
+                end_s=uploaded_duration - clip_seconds,
+            )
+            clip_status = f"Auto-clipped {clip_seconds:.2f}s from start and end."
+        else:
+            clip_status = (
+                f"Auto-clip skipped because clip_ends={clip_seconds:.2f}s is too large "
+                f"for a {uploaded_duration:.2f}s file."
+            )
+
     wav_info = sf.info(io.BytesIO(raw))
     sr = int(wav_info.samplerate)
     original_wav_path = write_wav_bytes_to_cache(raw, "original")
     processed_wav_path = write_wav_bytes_to_cache(raw, "processed")
     duration_seconds = duration_from_wav_bytes(raw)
 
-    audio_player = html.Div(
-        [
-            html.P(
-                f"▶  {filename}   |   {sr:,} Hz   |   {duration_seconds:.2f} s",
-                style={"margin": "8px 0 4px", "fontSize": "13px", "color": "#444"},
-            ),
-            html.Audio(
-                src=contents,
-                controls=True,
-                style={"width": "100%"},
-            ),
-        ],
-        style={"marginBottom": "8px"},
-    )
+    audio_player = make_audio_player(raw, filename, sr)
 
     store = {
         "filename": filename,
@@ -761,7 +890,76 @@ def on_upload(contents, filename):
         "processed_wav_path": processed_wav_path,
         "duration": duration_seconds,
     }
-    return audio_player, store, processed_store, "Raw audio", {"filter_name": "raw", "label": "Raw audio"}, None, None, {}, "Exports will reflect the current processed audio and validations."
+    preprocessing_label = "Raw audio"
+    if clip_status:
+        preprocessing_label = f"Raw audio | {clip_status}"
+
+    return audio_player, store, processed_store, preprocessing_label, {"filter_name": "raw", "label": "Raw audio"}, None, None, {}, "Exports will reflect the current processed audio and validations.", {"display": "block"}
+
+
+@app.callback(
+    Output("trim-waveform", "figure"),
+    Input("processed-audio-store", "data"),
+    prevent_initial_call=True,
+)
+def update_trim_waveform(processed_store):
+    """Update the trim waveform whenever processed audio changes."""
+    y, sr = load_audio_for_plot((processed_store or {}).get("processed_wav_path"))
+    if y is None:
+        return dash.no_update
+    return make_waveform_figure(y, sr)
+
+
+@app.callback(
+    Output("trim-selection-store", "data"),
+    Input("trim-waveform", "selectedData"),
+    prevent_initial_call=True,
+)
+def persist_trim_selection(selected_data):
+    """Store the trim waveform selection."""
+    return selected_data or None
+
+
+@app.callback(
+    Output("audio-player", "children", allow_duplicate=True),
+    Output("audio-store", "data", allow_duplicate=True),
+    Output("processed-audio-store", "data", allow_duplicate=True),
+    Output("filter-store", "data", allow_duplicate=True),
+    Output("selection-store", "data", allow_duplicate=True),
+    Output("trim-status", "children"),
+    Input("trim-apply-btn", "n_clicks"),
+    State("audio-store", "data"),
+    State("trim-selection-store", "data"),
+    prevent_initial_call=True,
+)
+def apply_trim(_clicks, audio_store, trim_selection):
+    if not audio_store:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, "Upload audio first."
+    original_wav_path = audio_store.get("original_wav_path")
+    if not original_wav_path or not os.path.exists(original_wav_path):
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, "Original file not found."
+
+    if not trim_selection or "range" not in (trim_selection or {}) or "x" not in (trim_selection.get("range") or {}):
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, "No selection made. Use Box Select tool on the waveform."
+
+    start_s, end_s = trim_selection["range"]["x"]
+    start_s, end_s = sorted((float(start_s), float(end_s)))
+
+    original_wav_bytes = read_wav_bytes(original_wav_path)
+    cropped_bytes = filter_crop(original_wav_bytes, start_s=start_s, end_s=end_s)
+    new_original_path = write_wav_bytes_to_cache(cropped_bytes, "original")
+    new_processed_path = write_wav_bytes_to_cache(cropped_bytes, "processed")
+    new_duration = duration_from_wav_bytes(cropped_bytes)
+
+    # Load sample rate from original to display in audio player
+    y, sr = load_audio_full(new_original_path)
+    filename = audio_store.get("filename", "trimmed_audio.wav")
+    new_audio_player = make_audio_player(cropped_bytes, filename, sr)
+
+    new_audio_store = {**audio_store, "original_wav_path": new_original_path}
+    new_processed_store = {"processed_wav_path": new_processed_path, "duration": new_duration}
+    status = f"Trimmed to {start_s:.2f}–{end_s:.2f} s ({new_duration:.2f} s). Re-upload to restore original."
+    return new_audio_player, new_audio_store, new_processed_store, {"filter_name": "raw", "label": "Raw audio"}, None, status
 
 
 @app.callback(
@@ -771,9 +969,11 @@ def on_upload(contents, filename):
     Input({"type": "preprocessing-step-btn", "index": ALL}, "n_clicks"),
     Input("filter-revert", "n_clicks"),
     State("audio-store", "data"),
+    State("lowpass-cutoff-hz", "value"),
+    State("highpass-cutoff-hz", "value"),
     prevent_initial_call=True,
 )
-def update_preprocessing(_step_clicks, _revert_clicks, store):
+def update_preprocessing(_step_clicks, _revert_clicks, store, lowpass_hz, highpass_hz):
     if not store:
         return dash.no_update, "Upload audio first.", dash.no_update
 
@@ -795,17 +995,80 @@ def update_preprocessing(_step_clicks, _revert_clicks, store):
     if isinstance(triggered, dict) and triggered.get("type") == "preprocessing-step-btn":
         filter_name = triggered.get("index", "raw")
 
-    result = run_preprocessing_step(original_wav_bytes, filter_name)
+    params = None
+    label_override = humanize_name(filter_name)
+    if filter_name == "lowpass":
+        cutoff = float(lowpass_hz or DEFAULT_LOWPASS_CUTOFF_HZ)
+        params = {"cutoff_hz": cutoff}
+        label_override = f"Low pass @ {int(cutoff)} Hz"
+    elif filter_name == "highpass":
+        cutoff = float(highpass_hz or DEFAULT_HIGHPASS_CUTOFF_HZ)
+        params = {"cutoff_hz": cutoff}
+        label_override = f"High pass @ {int(cutoff)} Hz"
+
+    result = run_preprocessing_step(original_wav_bytes, filter_name, params=params)
     if isinstance(result, tuple):
         processed_wav_bytes, label = result
     else:
         processed_wav_bytes = result
-        label = humanize_name(filter_name)
+        label = label_override
     processed_path = write_wav_bytes_to_cache(processed_wav_bytes, "processed")
     return {
         "processed_wav_path": processed_path,
         "duration": duration_from_wav_bytes(processed_wav_bytes),
     }, label, {"filter_name": filter_name, "label": label}
+
+
+@app.callback(
+    Output("lowpass-controls", "style"),
+    Output("highpass-controls", "style"),
+    Input("filter-store", "data"),
+)
+def toggle_freq_controls(filter_store):
+    filter_name = (filter_store or {}).get("filter_name", "raw")
+    show = {"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "8px"}
+    hide = {"display": "none"}
+    if filter_name == "lowpass":
+        return show, hide
+    if filter_name == "highpass":
+        return hide, show
+    return hide, hide
+
+
+@app.callback(
+    Output("processed-audio-store", "data", allow_duplicate=True),
+    Output("preprocessing-status", "children", allow_duplicate=True),
+    Output("filter-store", "data", allow_duplicate=True),
+    Input("lowpass-cutoff-hz", "value"),
+    Input("highpass-cutoff-hz", "value"),
+    State("filter-store", "data"),
+    State("audio-store", "data"),
+    prevent_initial_call=True,
+)
+def update_preprocessing_on_freq_change(lowpass_hz, highpass_hz, filter_store, audio_store):
+    filter_name = (filter_store or {}).get("filter_name", "raw")
+    if filter_name not in ("lowpass", "highpass"):
+        return dash.no_update, dash.no_update, dash.no_update
+
+    original_wav_path = (audio_store or {}).get("original_wav_path")
+    if not original_wav_path or not os.path.exists(original_wav_path):
+        return dash.no_update, "Upload audio first.", dash.no_update
+    original_wav_bytes = read_wav_bytes(original_wav_path)
+
+    if filter_name == "lowpass":
+        cutoff = float(lowpass_hz or DEFAULT_LOWPASS_CUTOFF_HZ)
+        label = f"Low pass @ {int(cutoff)} Hz"
+    else:
+        cutoff = float(highpass_hz or DEFAULT_HIGHPASS_CUTOFF_HZ)
+        label = f"High pass @ {int(cutoff)} Hz"
+
+    result = run_preprocessing_step(original_wav_bytes, filter_name, params={"cutoff_hz": cutoff})
+    processed_path = write_wav_bytes_to_cache(result, "processed")
+    return (
+        {"processed_wav_path": processed_path, "duration": duration_from_wav_bytes(result)},
+        label,
+        {"filter_name": filter_name, "label": label},
+    )
 
 
 @app.callback(

@@ -82,7 +82,7 @@ In `classification.py`, register the model with a short `about` description (sho
 CLASSIFICATION_MODELS = {
 	"google_model_simple": {          # existing entry
 		"fn": google_model_simple,
-		"about": "Short description of this model.",
+		"about": "Source: https://www.kaggle.com/models/google/multispecies-whale.",
 	},
 	"my_classifier": {
 		"fn": model_my_classifier,
@@ -90,7 +90,6 @@ CLASSIFICATION_MODELS = {
 	},
 }
 ```
-> **Note on class names:** The Google Multispecies Whale model returns short species codes (e.g. `Mn`, `Oo`). These are automatically translated to common names (e.g. `Humpback whale`, `Orca`) via the `_GOOGLE_CLASS_COMMON_NAMES` mapping in `classification.py`. If you add a model that also uses short codes, extend that mapping or translate labels inside your own model function before returning.
 
 ### 3) Use it in the dashboard
 `dashboard.py` automatically reads model names from `CLASSIFICATION_MODELS` and renders them as buttons in the `Detection & Classification` section.

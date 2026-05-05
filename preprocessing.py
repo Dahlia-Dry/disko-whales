@@ -3,7 +3,7 @@ import io
 import librosa
 import numpy as np
 import soundfile as sf
-from scipy.signal import butter, lfilter, medfilt
+from scipy.signal import butter, lfilter, medfilt, sosfiltfilt
 
 # --- INTERNAL UTILITIES ---
 
@@ -63,21 +63,56 @@ def filter_whale_clean(wav_bytes: bytes) -> bytes:
     y_filtered = apply_whale_filters(y, sr)
     return _encode_wav_bytes(y_filtered, sr)
 
+def filter_lowpass(wav_bytes: bytes, cutoff_hz: float = 1000.0) -> bytes:
+    """Applies a Butterworth low-pass filter at the given cutoff frequency."""
+    y, sr = _decode_wav_bytes(wav_bytes)
+    nyq = 0.5 * sr
+    cutoff = min(max(float(cutoff_hz) / nyq, 0.001), 0.999)
+    sos = butter(8, cutoff, btype="low", output="sos")
+    y = sosfiltfilt(sos, y)
+    y = librosa.util.normalize(np.nan_to_num(y.astype(np.float32)))
+    return _encode_wav_bytes(y, sr)
+
+
+def filter_highpass(wav_bytes: bytes, cutoff_hz: float = 100.0) -> bytes:
+    """Applies a Butterworth high-pass filter at the given cutoff frequency."""
+    y, sr = _decode_wav_bytes(wav_bytes)
+    nyq = 0.5 * sr
+    cutoff = min(max(float(cutoff_hz) / nyq, 0.001), 0.999)
+    sos = butter(8, cutoff, btype="high", output="sos")
+    y = sosfiltfilt(sos, y)
+    y = librosa.util.normalize(np.nan_to_num(y.astype(np.float32)))
+    return _encode_wav_bytes(y, sr)
+
+
+def filter_crop(wav_bytes: bytes, start_s: float = 0.0, end_s: float | None = None) -> bytes:
+    """Crops the audio to the given time range (in seconds)."""
+    y, sr = _decode_wav_bytes(wav_bytes)
+    i0 = max(0, int(float(start_s) * sr))
+    i1 = int(float(end_s) * sr) if end_s is not None else len(y)
+    i1 = min(i1, len(y))
+    return _encode_wav_bytes(y[i0:i1], sr)
+
+
 # This dictionary is read by dashboard.py to generate buttons
 PREPROCESSING_STEPS = {
     "raw": filter_raw,
     "whale_clean": filter_whale_clean,
+    "lowpass": filter_lowpass,
+    "highpass": filter_highpass,
 }
 
 # --- MANDATORY DASHBOARD INTERFACE ---
 
-def run_preprocessing_step(wav_bytes: bytes, step_name: str) -> bytes:
+def run_preprocessing_step(wav_bytes: bytes, step_name: str, params: dict | None = None) -> bytes:
     """
     This is the specific function dashboard.py line 28 is looking for.
     It must take bytes and return bytes.
     """
     # Look up the function in the dictionary, default to filter_raw if not found
     func = PREPROCESSING_STEPS.get(step_name, filter_raw)
-    
+
     # Execute the function and return the resulting bytes
+    if params:
+        return func(wav_bytes, **params)
     return func(wav_bytes)

@@ -34,7 +34,8 @@ def apply_whale_filters(y: np.ndarray, sr: int) -> np.ndarray:
     
     # 2. Band-pass (Standard whale frequency range)
     nyq = 0.5 * sr
-    low, high = max(0.001, 10 / nyq), min(0.999, 48000 / nyq)
+    # Low cutoff: 30 Hz | High cutoff: 2,000 Hz (2 kHz)
+    low, high = max(0.001, 30 / nyq), min(0.999, 2000 / nyq)
     b, a = butter(5, [low, high], btype='band')
     y = lfilter(b, a, y)
     

@@ -77,13 +77,21 @@ def model_my_classifier(wav_bytes: bytes) -> dict:
 	}
 ```
 ### 2) Register it in CLASSIFICATION_MODELS
-In `classification.py`, add:
+In `classification.py`, register the model with a short `about` description (shown as a tooltip when hovering the button in the dashboard):
 ```python
 CLASSIFICATION_MODELS = {
-	"google_model_simple": google_model_simple, #example
-	"my_classifier": model_my_classifier,
+	"google_model_simple": {          # existing entry
+		"fn": google_model_simple,
+		"about": "Short description of this model.",
+	},
+	"my_classifier": {
+		"fn": model_my_classifier,
+		"about": "My custom classifier trained on Disko Bay recordings.",
+	},
 }
 ```
+> **Note on class names:** The Google Multispecies Whale model returns short species codes (e.g. `Mn`, `Oo`). These are automatically translated to common names (e.g. `Humpback whale`, `Orca`) via the `_GOOGLE_CLASS_COMMON_NAMES` mapping in `classification.py`. If you add a model that also uses short codes, extend that mapping or translate labels inside your own model function before returning.
+
 ### 3) Use it in the dashboard
 `dashboard.py` automatically reads model names from `CLASSIFICATION_MODELS` and renders them as buttons in the `Detection & Classification` section.
 

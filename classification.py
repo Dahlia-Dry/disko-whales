@@ -24,6 +24,23 @@ import tensorflow_hub as hub
 
 MODEL_URL = "https://www.kaggle.com/models/google/multispecies-whale/TensorFlow2/default/2"
 
+# Mapping from Google model's internal short codes to human-readable common names.
+# Source: https://www.kaggle.com/models/google/multispecies-whale (Outputs section)
+_GOOGLE_CLASS_COMMON_NAMES: dict[str, str] = {
+    "Oo":           "Orca",
+    "Mn":           "Humpback whale",
+    "Eg":           "Right whale (Atlantic)",
+    "Be":           "Bryde's whale",
+    "Upcall":       "Right whale (Pacific, upcall)",
+    "Bp":           "Fin whale",
+    "Call":         "Orca call",
+    "Gunshot":      "Right whale (Pacific, gunshot)",
+    "Echolocation": "Orca echolocation",
+    "Bm":           "Blue whale",
+    "Whistle":      "Orca whistle",
+    "Ba":           "Minke whale",
+}
+
 
 def _empty_output() -> dict:
     return {
@@ -82,18 +99,46 @@ def google_model_simple(wav_bytes: bytes) -> dict:
     # Use a simple 0.5 cutoff for 0/1 predicted labels.
     predicted = [1 if float(p) >= 0.5 else 0 for p in mean_probabilities]
 
+    common_names = [
+        _GOOGLE_CLASS_COMMON_NAMES.get(c, c) for c in class_names
+    ]
+
     _ = sample_rate
     return {
-        "event": class_names,
+        "event": common_names,
         "probability": [float(p) for p in mean_probabilities],
         "predicted": predicted,
     }
 
 
-# Add new classification models here.
-CLASSIFICATION_MODELS = {
-    "google_model_simple": google_model_simple,
+# Registry: each entry is either a plain callable (legacy) or a dict with keys:
+#   "fn"    – callable matching the model contract
+#   "about" – one-sentence description shown as a tooltip in the dashboard
+#
+# To add a new model:
+#   "my_model": {
+#       "fn": model_my_classifier,
+#       "about": "Short description of the model.",
+#   },
+CLASSIFICATION_MODELS: dict[str, dict | callable] = {
+    "google_model_simple": {
+        "fn": google_model_simple,
+        "about": (
+            "Google Multispecies Whale Detector (EfficientNet-B0). "
+            "Scores 12 classes across 7 species and 5 call types on 5-second "
+            "24 kHz context windows. "
+            "Source: kaggle.com/models/google/multispecies-whale"
+        ),
+    },
 }
+
+
+def get_classification_model_about(model_name: str) -> str:
+    """Return the about string for a registered model, or empty string if not set."""
+    entry = CLASSIFICATION_MODELS.get(model_name)
+    if isinstance(entry, dict):
+        return entry.get("about", "")
+    return ""
 
 
 def run_classification_model(wav_bytes: bytes, model_name: str = "placeholder") -> dict:
@@ -112,7 +157,13 @@ def run_classification_model(wav_bytes: bytes, model_name: str = "placeholder") 
         Dict with keys: event, probability, predicted.
         'predicted' should contain 0/1 values.
     """
-    model_func = CLASSIFICATION_MODELS.get(model_name, model_placeholder)
+    entry = CLASSIFICATION_MODELS.get(model_name)
+    if entry is None:
+        model_func = model_placeholder
+    elif isinstance(entry, dict):
+        model_func = entry.get("fn", model_placeholder)
+    else:
+        model_func = entry  # legacy plain-callable entry
     result = model_func(wav_bytes)
 
     # Defensive normalization so dashboard always receives the expected schema.

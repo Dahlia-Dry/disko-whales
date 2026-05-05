@@ -11,9 +11,10 @@ import io
 import json
 import os
 import tempfile
+import uuid
 
 import dash
-from dash import Input, Output, State, ALL, dash_table, dcc, html
+from dash import Input, Output, State, ALL, dash_table, dcc, html, Patch
 import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
@@ -23,9 +24,58 @@ import librosa
 import pandas as pd
 import soundfile as sf
 
-from classification import CLASSIFICATION_MODELS, run_classification_model
+from classification import CLASSIFICATION_MODELS, run_classification_model, get_classification_model_about
 from disko_sound import Disko_Sound
 from preprocessing import PREPROCESSING_STEPS, run_preprocessing_step
+
+CACHE_DIR = os.path.join(tempfile.gettempdir(), "disko_whales_cache")
+MAX_PLOT_DURATION_SECONDS = 15 * 60
+PLOT_TARGET_SR = 4000
+
+# ── Whale catalog data ─────────────────────────────────────────────────────────
+
+WHALE_DATA = {
+    "Narwhal": {
+        "call_types": "clicks, whistles, pulses, knocks",
+        "frequency_range": "generally 300 Hz–150 kHz",
+        "typical_duration": "clicks last <0.1 s, whistles and pulses last 0.1–2 s",
+        "example_files": [
+            "known_samples/narwhal/Narwhal.wav",
+            "known_samples/narwhal/narwhal-voicesofthesea.wav",
+        ],
+    },
+    "Fin whale": {
+        "call_types": "pulses, downsweeps, songs",
+        "frequency_range": "typically 15–40 Hz, sometimes up to 100 Hz",
+        "typical_duration": "songs can last minutes–hours, pulses last 0.5–2 s",
+        "example_files": [
+            "known_samples/fin/fin.wav",
+            "known_samples/fin/finWhale.wav",
+        ],
+    },
+    "Humpback whale": {
+        "call_types": "structured songs, moans, grunts, squeaks",
+        "frequency_range": "generally 20 Hz to 10 kHz, with most energy in 100 Hz to 4 kHz",
+        "typical_duration": "songs can last 10–30 minutes, individual calls typically 0.5–5 s",
+        "example_files": [
+            "known_samples/humpback/humpback_bubblenetFeeding.wav",
+            "known_samples/humpback/humpback_socialSounds.wav",
+            "known_samples/humpback/humpbackvoicesofthesea1.wav",
+            "known_samples/humpback/humpback-whale-song-skj-bay_MarianneRasmussen.wav",
+        ],
+    },
+    "Beluga whale": {
+        "call_types": "clicks, whistles, chirps, pulses/bursts",
+        "frequency_range": "generally 1–120 kHz, with whistles often in 1–20 kHz range",
+        "typical_duration": "clicks last <0.1 s, whistles and calls last <5 s",
+        "example_files": [
+            "known_samples/beluga/beluga_clicks.wav",
+            "known_samples/beluga/beluga_socialSounds.wav",
+            "known_samples/beluga/beluga-voicesofthesea.wav",
+            "known_samples/beluga/beluga.wav",
+        ],
+    },
+}
 
 # ── App ────────────────────────────────────────────────────────────────────────
 
@@ -56,19 +106,22 @@ def humanize_name(name: str):
     return name.replace("_", " ").replace("-", " ").title()
 
 
-def render_selector_buttons(option_names, selected_value, button_type, extra_buttons=None):
+def render_selector_buttons(option_names, selected_value, button_type, extra_buttons=None, about_map=None):
     buttons = []
     for option_name in option_names:
         is_active = option_name == selected_value
+        about_text = (about_map or {}).get(option_name, "")
         buttons.append(
             html.Button(
                 humanize_name(option_name),
                 id={"type": button_type, "index": option_name},
                 n_clicks=0,
+                title=about_text or None,
                 style={
                     **SELECTOR_BUTTON_STYLE,
                     "backgroundColor": "#2f6fdd" if is_active else "#ffffff",
                     "color": "#ffffff" if is_active else "#333333",
+                    "cursor": "help" if about_text else "pointer",
                 },
             )
         )
@@ -128,12 +181,12 @@ app.layout = html.Div(
             ],
             style={"marginTop": "24px"},
         ),
-        # ── Spectrogram ────────────────────────────────────────────────────────
+        # ── Spectrogram + Waveform ─────────────────────────────────────────────
         html.Div(
             [
-                html.H3("Spectrogram", style={"marginBottom": "4px"}),
+                html.H3("Spectrogram + Waveform", style={"marginBottom": "4px"}),
                 html.P(
-                    "Use the Box Select tool (□) in the toolbar to pick a time region for analysis.",
+                    "Use the Box Select tool (□) in the toolbar on either the spectrogram or the waveform to pick a time region for analysis.",
                     style={"color": "#666", "fontSize": "13px", "marginTop": 0},
                 ),
             ],
@@ -156,11 +209,51 @@ app.layout = html.Div(
                 "scrollZoom": True,
             },
         ),
+        html.Div(
+            html.P("Waveform", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px", "color": "#666"}),
+            style={"marginTop": "12px"},
+        ),
+        dcc.Graph(
+            id="waveform",
+            figure=go.Figure(
+                layout=go.Layout(
+                    height=160,
+                    xaxis={"title": "Time (s)"},
+                    yaxis={"title": "Amplitude"},
+                    paper_bgcolor="#fafafa",
+                    plot_bgcolor="#f5f8ff",
+                )
+            ),
+            config={
+                "modeBarButtonsToAdd": ["select2d"],
+                "displayModeBar": True,
+                "scrollZoom": True,
+            },
+        ),
         # ── Analysis panel ─────────────────────────────────────────────────────
         html.Div(id="analysis-status", style={"marginTop": "20px", "color": "#666", "fontSize": "13px"}),
         html.Div(id="analysis-panel", style={"marginTop": "28px"}),
         html.Div(id="detection-status", style={"marginTop": "20px", "color": "#666", "fontSize": "13px"}),
         html.Div(id="classification-panel", style={"marginTop": "28px"}),
+        # ── Disko Whale Catalog ─────────────────────────────────────────────────
+        html.Div(
+            [
+                html.H3("Disko Whale Catalog", style={"marginBottom": "4px"}),
+                html.P(
+                    "Use this catalog to compare your file against known species examples and assist with manual validation of the model predictions above.",
+                    style={"color": "#666", "fontSize": "13px", "marginTop": 0},
+                ),
+                dcc.Dropdown(
+                    id="catalog-species-dropdown",
+                    options=[{"label": k, "value": k} for k in WHALE_DATA],
+                    placeholder="Select a species to compare…",
+                    clearable=True,
+                    style={"maxWidth": "320px", "marginBottom": "12px"},
+                ),
+                html.Div(id="catalog-info-panel"),
+            ],
+            style={"marginTop": "36px"},
+        ),
         html.Div(
             [
                 html.H3("Export Results", style={"marginBottom": "8px"}),
@@ -195,34 +288,51 @@ app.layout = html.Div(
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
-def decode_audio(contents: str):
-    """dcc.Upload content string → (y float32 array, sr int, raw bytes)."""
-    _header, b64 = contents.split(",", 1)
-    raw = base64.b64decode(b64)
-    buf = io.BytesIO(raw)
-    y, sr = librosa.load(buf, sr=None, mono=True)
-    return y, sr, raw
-
-
-def decode_wav_bytes(wav_bytes: bytes):
-    y, sr = librosa.load(io.BytesIO(wav_bytes), sr=None, mono=True)
-    return y.astype(np.float32), int(sr)
-
-
 def encode_wav_bytes(y: np.ndarray, sr: int):
     buf = io.BytesIO()
     sf.write(buf, y, sr, format="WAV")
     return buf.getvalue()
 
 
-def serialize_audio(y: np.ndarray, sr: int):
-    return {"y": y.tolist(), "sr": int(sr), "duration": float(len(y) / sr)}
+def ensure_cache_dir():
+    os.makedirs(CACHE_DIR, exist_ok=True)
 
 
-def deserialize_audio(store: dict):
-    if not store:
+def write_wav_bytes_to_cache(wav_bytes: bytes, prefix: str) -> str:
+    ensure_cache_dir()
+    filename = f"{prefix}-{uuid.uuid4().hex}.wav"
+    path = os.path.join(CACHE_DIR, filename)
+    with open(path, "wb") as handle:
+        handle.write(wav_bytes)
+    return path
+
+
+def read_wav_bytes(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def load_audio_for_plot(path: str):
+    """Load a capped-duration, downsampled signal for UI plotting."""
+    if not path or not os.path.exists(path):
         return None, None
-    return np.asarray(store["y"], dtype=np.float32), int(store["sr"])
+    y, sr = librosa.load(path, sr=PLOT_TARGET_SR, mono=True, duration=MAX_PLOT_DURATION_SECONDS)
+    return y.astype(np.float32), int(sr)
+
+
+def load_audio_full(path: str):
+    """Load full-resolution signal for analysis/export/classification."""
+    if not path or not os.path.exists(path):
+        return None, None
+    y, sr = librosa.load(path, sr=None, mono=True)
+    return y.astype(np.float32), int(sr)
+
+
+def duration_from_wav_bytes(wav_bytes: bytes) -> float:
+    info = sf.info(io.BytesIO(wav_bytes))
+    if info.samplerate <= 0:
+        return 0.0
+    return float(info.frames) / float(info.samplerate)
 
 
 def slugify_filename(value: str | None):
@@ -304,6 +414,38 @@ def render_spectrogram_png(y: np.ndarray, sr: int, selected_data: dict | None):
     return buf.getvalue()
 
 
+def make_waveform_figure(y: np.ndarray, sr: int) -> go.Figure:
+    if len(y) > 4000:
+        indices = np.linspace(0, len(y) - 1, 4000).astype(int)
+        y_plot = y[indices]
+        times = np.linspace(0, len(y) / sr, num=4000)
+    else:
+        y_plot = y
+        times = np.arange(len(y)) / sr
+
+    fig = go.Figure(
+        go.Scatter(
+            x=times,
+            y=y_plot,
+            mode="lines",
+            line=dict(color="#2f6fdd", width=1),
+            hovertemplate="Time: %{x:.3f} s<br>Amplitude: %{y:.4f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        height=160,
+        margin=dict(l=60, r=20, t=10, b=40),
+        xaxis_title="Time (s)",
+        yaxis_title="Amplitude",
+        dragmode="select",
+        paper_bgcolor="#fafafa",
+        plot_bgcolor="#f5f8ff",
+        xaxis=dict(showgrid=True, gridcolor="#e8e8e8"),
+        yaxis=dict(showgrid=True, gridcolor="#e8e8e8"),
+    )
+    return fig
+
+
 def make_spectrogram_figure(y: np.ndarray, sr: int):
     n_fft = 2048
     hop = 512
@@ -340,16 +482,46 @@ def make_spectrogram_figure(y: np.ndarray, sr: int):
     return fig
 
 
+def build_catalog_audio_block(y: np.ndarray, sr: int, audio_src: str, label: str) -> html.Div:
+    """Waveform + spectrogram + audio player card for catalog comparison."""
+    wave_fig = make_waveform_figure(y, sr)
+    wave_fig.update_layout(height=160, margin=dict(l=50, r=10, t=10, b=40))
+    spec_fig = make_spectrogram_figure(y, sr)
+    spec_fig.update_layout(height=260, margin=dict(l=60, r=20, t=10, b=50))
+    return html.Div(
+        style={
+            "backgroundColor": "#ffffff",
+            "border": "1px solid #e0e0e0",
+            "borderRadius": "10px",
+            "padding": "16px",
+            "minWidth": 0,
+        },
+        children=[
+            html.H4(label, style={"marginTop": 0, "marginBottom": "12px", "color": "#1a1a2e", "fontSize": "14px"}),
+            html.P("Waveform", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px", "color": "#666"}),
+            dcc.Graph(figure=wave_fig, config={"displayModeBar": False}),
+            html.P("Spectrogram", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px", "marginTop": "12px", "color": "#666"}),
+            dcc.Graph(figure=spec_fig, config={"displayModeBar": False}),
+            html.Audio(src=audio_src, controls=True, style={"width": "100%", "marginTop": "10px"}),
+        ],
+    )
+
+
 def render_detection_panel(detection_rows, validation_store=None, selected_model=None):
     detection_rows = detection_rows or []
     validation_store = validation_store or {}
     sorted_rows = sorted(detection_rows, key=lambda row: row["probability"], reverse=True)
     top_row = sorted_rows[0] if sorted_rows else None
 
+    model_about_map = {
+        name: get_classification_model_about(name)
+        for name in CLASSIFICATION_MODELS
+    }
     model_buttons = render_selector_buttons(
         CLASSIFICATION_MODELS.keys(),
         selected_model,
         "classification-model-btn",
+        about_map=model_about_map,
     )
 
     table_rows = []
@@ -424,6 +596,83 @@ def render_detection_panel(detection_rows, validation_store=None, selected_model
 
 
 @app.callback(
+    Output("catalog-info-panel", "children"),
+    Input("catalog-species-dropdown", "value"),
+    State("processed-audio-store", "data"),
+    State("audio-store", "data"),
+)
+def update_catalog_panel(species, processed_store, audio_store):
+    if not species:
+        return html.P("Select a species above to view its call characteristics and compare with known examples.", style={"color": "#888", "fontSize": "13px"})
+    info = WHALE_DATA[species]
+    rows = [
+        ("Call types", info["call_types"]),
+        ("Frequency range", info["frequency_range"]),
+        ("Typical duration", info["typical_duration"]),
+    ]
+    info_table = html.Div(
+        html.Table(
+            [
+                html.Thead(html.Tr([
+                    html.Th("Property", style={"textAlign": "left", "padding": "8px 12px", "backgroundColor": "#e8e8e8", "width": "28%"}),
+                    html.Th("Value", style={"textAlign": "left", "padding": "8px 12px", "backgroundColor": "#e8e8e8"}),
+                ])),
+                html.Tbody([
+                    html.Tr([
+                        html.Td(k, style={"padding": "7px 12px", "borderBottom": "1px solid #e0e0e0", "fontWeight": "500", "fontSize": "13px"}),
+                        html.Td(v, style={"padding": "7px 12px", "borderBottom": "1px solid #e0e0e0", "fontSize": "13px"}),
+                    ])
+                    for k, v in rows
+                ]),
+            ],
+            style={"width": "100%", "borderCollapse": "collapse", "backgroundColor": "#fff"},
+        ),
+        style={"border": "1px solid #e0e0e0", "borderRadius": "6px", "overflow": "hidden", "maxWidth": "720px", "marginBottom": "20px"},
+    )
+
+    blocks = []
+
+    # Current file under inspection (if uploaded)
+    if processed_store:
+        y_up, sr_up = load_audio_for_plot((processed_store or {}).get("processed_wav_path"))
+        if y_up is not None:
+            buf = io.BytesIO()
+            sf.write(buf, y_up, sr_up, format="WAV")
+            audio_src = "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
+            filename = (audio_store or {}).get("filename", "uploaded file")
+            blocks.append(build_catalog_audio_block(y_up, sr_up, audio_src, f"🔍 {filename}"))
+
+    # Known example files for the selected species
+    for file_path in info.get("example_files", []):
+        if not os.path.exists(file_path):
+            continue
+        try:
+            y_ex, sr_ex = librosa.load(file_path, sr=None, mono=True)
+            y_ex = y_ex.astype(np.float32)
+            buf = io.BytesIO()
+            sf.write(buf, y_ex, sr_ex, format="WAV")
+            audio_src = "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
+            label = os.path.splitext(os.path.basename(file_path))[0]
+            blocks.append(build_catalog_audio_block(y_ex, sr_ex, audio_src, label))
+        except Exception as exc:
+            blocks.append(html.Div(
+                html.P(f"Could not load {os.path.basename(file_path)}: {exc}", style={"color": "#c00", "fontSize": "13px"}),
+                style={"padding": "12px"},
+            ))
+
+    grid = html.Div(
+        blocks,
+        style={
+            "display": "grid",
+            "gridTemplateColumns": "repeat(auto-fill, minmax(360px, 1fr))",
+            "gap": "20px",
+        },
+    )
+
+    return html.Div([info_table, grid])
+
+
+@app.callback(
     Output("preprocessing-buttons", "children"),
     Input("filter-store", "data"),
 )
@@ -472,12 +721,18 @@ def on_upload(contents, filename):
             dash.no_update,
         )
 
-    y, sr, raw = decode_audio(contents)
+    _header, b64 = contents.split(",", 1)
+    raw = base64.b64decode(b64)
+    wav_info = sf.info(io.BytesIO(raw))
+    sr = int(wav_info.samplerate)
+    original_wav_path = write_wav_bytes_to_cache(raw, "original")
+    processed_wav_path = write_wav_bytes_to_cache(raw, "processed")
+    duration_seconds = duration_from_wav_bytes(raw)
 
     audio_player = html.Div(
         [
             html.P(
-                f"▶  {filename}   |   {sr:,} Hz   |   {len(y)/sr:.2f} s",
+                f"▶  {filename}   |   {sr:,} Hz   |   {duration_seconds:.2f} s",
                 style={"margin": "8px 0 4px", "fontSize": "13px", "color": "#444"},
             ),
             html.Audio(
@@ -490,12 +745,13 @@ def on_upload(contents, filename):
     )
 
     store = {
-        "contents": contents,
-        "sr": int(sr),
         "filename": filename,
-        "original_wav_b64": base64.b64encode(raw).decode("utf-8"),
+        "original_wav_path": original_wav_path,
     }
-    processed_store = serialize_audio(y, sr)
+    processed_store = {
+        "processed_wav_path": processed_wav_path,
+        "duration": duration_seconds,
+    }
     return audio_player, store, processed_store, "Raw audio", {"filter_name": "raw", "label": "Raw audio"}, None, None, {}, "Exports will reflect the current processed audio and validations."
 
 
@@ -514,19 +770,33 @@ def update_preprocessing(_step_clicks, _revert_clicks, store):
 
     triggered = dash.ctx.triggered_id
 
-    original_wav_bytes = base64.b64decode(store["original_wav_b64"])
+    original_wav_path = (store or {}).get("original_wav_path")
+    if not original_wav_path or not os.path.exists(original_wav_path):
+        return dash.no_update, "Original upload could not be found. Please upload again.", dash.no_update
+    original_wav_bytes = read_wav_bytes(original_wav_path)
 
     if triggered == "filter-revert":
-        y, sr = decode_wav_bytes(original_wav_bytes)
-        return serialize_audio(y, sr), "Reverted to original uploaded WAV", {"filter_name": "raw", "label": "Raw audio"}
+        reverted_path = write_wav_bytes_to_cache(original_wav_bytes, "processed")
+        return {
+            "processed_wav_path": reverted_path,
+            "duration": duration_from_wav_bytes(original_wav_bytes),
+        }, "Reverted to original uploaded WAV", {"filter_name": "raw", "label": "Raw audio"}
 
     filter_name = "raw"
     if isinstance(triggered, dict) and triggered.get("type") == "preprocessing-step-btn":
         filter_name = triggered.get("index", "raw")
 
-    processed_wav_bytes, label = run_preprocessing_step(original_wav_bytes, filter_name)
-    y, sr = decode_wav_bytes(processed_wav_bytes)
-    return serialize_audio(y, sr), label, {"filter_name": filter_name, "label": label}
+    result = run_preprocessing_step(original_wav_bytes, filter_name)
+    if isinstance(result, tuple):
+        processed_wav_bytes, label = result
+    else:
+        processed_wav_bytes = result
+        label = humanize_name(filter_name)
+    processed_path = write_wav_bytes_to_cache(processed_wav_bytes, "processed")
+    return {
+        "processed_wav_path": processed_path,
+        "duration": duration_from_wav_bytes(processed_wav_bytes),
+    }, label, {"filter_name": filter_name, "label": label}
 
 
 @app.callback(
@@ -535,19 +805,76 @@ def update_preprocessing(_step_clicks, _revert_clicks, store):
     prevent_initial_call=True,
 )
 def update_spectrogram(processed_store):
-    y, sr = deserialize_audio(processed_store)
+    y, sr = load_audio_for_plot((processed_store or {}).get("processed_wav_path"))
     if y is None:
         return dash.no_update
     return make_spectrogram_figure(y, sr)
 
 
 @app.callback(
-    Output("selection-store", "data"),
-    Input("spectrogram", "selectedData"),
+    Output("waveform", "figure"),
+    Input("processed-audio-store", "data"),
     prevent_initial_call=True,
 )
-def persist_selection(selected_data):
-    return selected_data
+def update_waveform(processed_store):
+    y, sr = load_audio_for_plot((processed_store or {}).get("processed_wav_path"))
+    if y is None:
+        return dash.no_update
+    return make_waveform_figure(y, sr)
+
+
+@app.callback(
+    Output("spectrogram", "figure", allow_duplicate=True),
+    Output("waveform", "figure", allow_duplicate=True),
+    Input("spectrogram", "relayoutData"),
+    Input("waveform", "relayoutData"),
+    prevent_initial_call=True,
+)
+def sync_xaxis(spec_relayout, wave_relayout):
+    def get_x_update(relayout_data):
+        """Return (range_or_None, is_reset) from a relayoutData dict."""
+        if not relayout_data:
+            return None, False
+        if relayout_data.get("xaxis.autorange") or relayout_data.get("autosize"):
+            return None, True
+        if "xaxis.range[0]" in relayout_data:
+            return [relayout_data["xaxis.range[0]"], relayout_data["xaxis.range[1]"]], False
+        if "xaxis.range" in relayout_data:
+            return relayout_data["xaxis.range"], False
+        return None, False
+
+    triggered = dash.ctx.triggered_id
+    if triggered == "spectrogram":
+        x_range, is_reset = get_x_update(spec_relayout)
+    else:
+        x_range, is_reset = get_x_update(wave_relayout)
+
+    if not is_reset and x_range is None:
+        return dash.no_update, dash.no_update
+
+    patch = Patch()
+    if is_reset:
+        patch["layout"]["xaxis"]["autorange"] = True
+    else:
+        patch["layout"]["xaxis"]["range"] = x_range
+        patch["layout"]["xaxis"]["autorange"] = False
+
+    if triggered == "spectrogram":
+        return dash.no_update, patch
+    return patch, dash.no_update
+
+
+@app.callback(
+    Output("selection-store", "data"),
+    Input("spectrogram", "selectedData"),
+    Input("waveform", "selectedData"),
+    prevent_initial_call=True,
+)
+def persist_selection(spec_selected, wave_selected):
+    triggered = dash.ctx.triggered_id
+    if triggered == "waveform":
+        return wave_selected
+    return spec_selected
 
 
 @app.callback(
@@ -560,7 +887,7 @@ def persist_selection(selected_data):
     prevent_initial_call=True,
 )
 def on_selection(processed_store, selected_data):
-    y, sr = deserialize_audio(processed_store)
+    y, sr = load_audio_full((processed_store or {}).get("processed_wav_path"))
     if y is None or sr is None:
         return None
 
@@ -594,11 +921,18 @@ def on_selection(processed_store, selected_data):
 
     rows = [{"Feature": k, "Value": f"{v:.4g}"} for k, v in features.items()]
 
-    seg_fig = make_spectrogram_figure(seg, sr)
-    seg_fig.update_layout(
-        height=320,
+    seg_spec_fig = make_spectrogram_figure(seg, sr)
+    seg_spec_fig.update_layout(
+        height=260,
         margin=dict(l=60, r=20, t=10, b=50),
         title=None,
+        dragmode="zoom",
+    )
+
+    seg_wave_fig = make_waveform_figure(seg, sr)
+    seg_wave_fig.update_layout(
+        height=140,
+        margin=dict(l=60, r=20, t=4, b=40),
         dragmode="zoom",
     )
 
@@ -636,7 +970,12 @@ def on_selection(processed_store, selected_data):
                         style={"minWidth": 0},
                     ),
                     html.Div(
-                        dcc.Graph(figure=seg_fig, config={"displayModeBar": False}),
+                        [
+                            html.P("Spectrogram", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px", "color": "#666"}),
+                            dcc.Graph(figure=seg_spec_fig, config={"displayModeBar": False}),
+                            html.P("Waveform", style={"fontWeight": "600", "fontSize": "13px", "marginBottom": "4px", "marginTop": "8px", "color": "#666"}),
+                            dcc.Graph(figure=seg_wave_fig, config={"displayModeBar": False}),
+                        ],
                         style={"minWidth": 0},
                     ),
                 ],
@@ -674,7 +1013,7 @@ def run_detection_placeholder_callback(selected_model, processed_store, selected
     if not selected_model:
         return [], render_detection_panel([], validation_store, selected_model)
 
-    y, sr = deserialize_audio(processed_store)
+    y, sr = load_audio_full((processed_store or {}).get("processed_wav_path"))
     if y is None or sr is None:
         return [], render_detection_panel([], validation_store, selected_model)
 
@@ -736,7 +1075,7 @@ def persist_validations(values, ids, detection_rows):
     prevent_initial_call=True,
 )
 def export_spectrogram(_n_clicks, processed_store, selected_data, audio_store, filter_store):
-    y, sr = deserialize_audio(processed_store)
+    y, sr = load_audio_full((processed_store or {}).get("processed_wav_path"))
     if y is None or sr is None:
         return dash.no_update, "Upload audio before exporting the spectrogram."
 

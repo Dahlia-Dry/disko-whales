@@ -17,3 +17,6 @@ __pycache__/
 
 #dash stuff
 exports/
+
+#big files
+unknown_samples/

@@ -1159,21 +1159,28 @@ def persist_selection(spec_selected, wave_selected):
     prevent_initial_call=True,
 )
 def on_selection(processed_store, selected_data):
-    y, sr = load_audio_full((processed_store or {}).get("processed_wav_path"))
-    if y is None or sr is None:
+    processed_wav_path = (processed_store or {}).get("processed_wav_path")
+    y_plot, sr_plot = load_audio_for_plot(processed_wav_path)
+    y_full, sr_full = load_audio_full(processed_wav_path)
+    if y_plot is None or sr_plot is None or y_full is None or sr_full is None:
         return None
 
-    segment_info = get_selected_segment(y, sr, selected_data)
-    seg = segment_info["segment"]
+    # Use the same display signal as the main spectrogram so both views match visually.
+    segment_info_plot = get_selected_segment(y_plot, sr_plot, selected_data)
+    seg_plot = segment_info_plot["segment"]
 
-    if len(seg) < int(sr * 0.05):
+    # Keep feature extraction on full-resolution audio.
+    segment_info_full = get_selected_segment(y_full, sr_full, selected_data)
+    seg_full = segment_info_full["segment"]
+
+    if len(seg_full) < int(sr_full * 0.05):
         return html.P("Selected segment too short for analysis.", style={"color": "#c00"})
 
     # Write segment to a temp file so Disko_Sound can load it
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".wav")
     os.close(tmp_fd)
     try:
-        sf.write(tmp_path, seg, sr)
+        sf.write(tmp_path, seg_full, sr_full)
         ds = Disko_Sound(tmp_path)
 
         features = {
@@ -1193,7 +1200,7 @@ def on_selection(processed_store, selected_data):
 
     rows = [{"Feature": k, "Value": f"{v:.4g}"} for k, v in features.items()]
 
-    seg_spec_fig = make_spectrogram_figure(seg, sr)
+    seg_spec_fig = make_spectrogram_figure(seg_plot, sr_plot)
     seg_spec_fig.update_layout(
         height=260,
         margin=dict(l=60, r=20, t=10, b=50),
@@ -1201,7 +1208,7 @@ def on_selection(processed_store, selected_data):
         dragmode="zoom",
     )
 
-    seg_wave_fig = make_waveform_figure(seg, sr)
+    seg_wave_fig = make_waveform_figure(seg_plot, sr_plot)
     seg_wave_fig.update_layout(
         height=140,
         margin=dict(l=60, r=20, t=4, b=40),
@@ -1209,10 +1216,10 @@ def on_selection(processed_store, selected_data):
     )
 
     heading = "Analysis — full signal"
-    if not segment_info["used_full_signal"]:
+    if not segment_info_plot["used_full_signal"]:
         heading = (
-            f"Analysis — {segment_info['t0']:.2f} s → {segment_info['t1']:.2f} s "
-            f"({segment_info['duration']:.2f} s)"
+            f"Analysis — {segment_info_plot['t0']:.2f} s → {segment_info_plot['t1']:.2f} s "
+            f"({segment_info_plot['duration']:.2f} s)"
         )
 
     return html.Div(

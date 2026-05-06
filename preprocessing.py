@@ -28,21 +28,34 @@ def apply_whale_filters(y: np.ndarray, sr: int) -> np.ndarray:
     # 1. Spectral Subtraction (Noise reduction)
     stft = librosa.stft(y)
     mag, phase = librosa.magphase(stft)
-    noise_est = np.mean(mag[:, :min(mag.shape[1], 10)], axis=1, keepdims=True)
-    mag_clean = np.maximum(mag - 1.5 * noise_est, 0.0)
+    if mag.shape[1] > 0:
+        # Use a low percentile over all frames rather than the first frames.
+        noise_est = np.percentile(mag, 20, axis=1, keepdims=True)
+    else:
+        noise_est = np.zeros((mag.shape[0], 1), dtype=mag.dtype)
+
+    # Keep subtraction conservative to avoid removing true calls.
+    subtraction_strength = 0.9
+    floor_ratio = 0.08
+    mag_clean = np.maximum(mag - subtraction_strength * noise_est, floor_ratio * mag)
     y = librosa.istft(mag_clean * phase)
     
     # 2. Band-pass (Standard whale frequency range)
     nyq = 0.5 * sr
-    # Low cutoff: 30 Hz | High cutoff: 2,000 Hz (2 kHz)
-    low, high = max(0.001, 30 / nyq), min(0.999, 2000 / nyq)
-    b, a = butter(5, [low, high], btype='band')
-    y = lfilter(b, a, y)
+    low_hz, high_hz = 30.0, 2000.0
+    low = max(0.001, low_hz / nyq)
+    high = min(0.999, high_hz / nyq)
+    if low < high:
+        sos = butter(5, [low, high], btype='band', output='sos')
+        y = sosfiltfilt(sos, y)
     
     # 3. Cleanup & Normalization
     y = medfilt(y, kernel_size=3)
-    y = librosa.util.normalize(np.nan_to_num(y))
-    return y
+    y = np.nan_to_num(y.astype(np.float32))
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    if peak > 1e-6:
+        y = librosa.util.normalize(y)
+    return y.astype(np.float32)
 
 # --- PREPROCESSING STEPS REGISTRY ---
 

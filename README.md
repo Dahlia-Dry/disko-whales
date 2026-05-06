@@ -6,6 +6,8 @@ Tilde Marie Reinhardt (s260388), Dahlia Louise Dry (s250127), Francesca Di Mella
 - classification.py: classification model methods
 - disko_sound.py: class for feature extraction from .wav files & spectrogram plotting
 
+![Demo Video](https://github.com/Dahlia-Dry/disko-whales/blob/main/misc_project_files/demo.mp4)
+
 ## Quick Start
 ### Install required packages
 ```bash
@@ -17,6 +19,24 @@ python dashboard.py
 ```
 ### Use the dashboard
 Go to http://127.0.0.1:8050/ in browser
+
+## Dashboard Features
+- Upload `.wav` recordings and play them back directly in the browser.
+- Inspect the current file with a linked spectrogram and waveform view.
+- Trim the uploaded file by box-selecting a time range on the trim waveform and applying the crop.
+- Apply preprocessing filters from the `Preprocessing` section. The built-in options currently include raw audio, low-pass, and high-pass filtering, as well as a custom filtering routine called Whale Clean (background subtraction -> bandpass filter -> normalization + median filtering), .
+- Adjust low-pass and high-pass cutoff values directly in the dashboard when those filters are selected.
+- Select any time range on the main spectrogram or waveform to run feature extraction on that segment.
+- View acoustic measurements for the selected region, including duration, dominant frequency, spectral centroid, spectral rolloff, bandwidth, RMS energy, and frequency range.
+- Run classification models on the current selection and review per-class probabilities in the `Detection & Classification` table.
+- Mark detection rows as validated with the checkbox column. Validation decisions are written to `exports/validation_log.json`.
+- Compare the uploaded audio against known example recordings in the `Disko Whale Catalog` section.
+
+### Exports
+- `Export Spectrogram PNG` downloads a PNG of the current processed spectrogram, including the active selection highlight if one exists.
+- `Export Detection CSV` downloads the current detection table as CSV and also updates `exports/detection_results.csv`.
+- Exported filenames include the uploaded filename stem and the active preprocessing filter name.
+- Validation state is included in exported detection rows through the `user_validated` column.
 
 ## Add/edit A Preprocessing Step
 All preprocessing is done through `preprocessing.py`.

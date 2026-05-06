@@ -1,4 +1,5 @@
 # Disko Audio Explorer
+### Final Project for 25347 Fundamentals of Underwater Acoustic and Optical Systems, Spring 2026
 Tilde Marie Reinhardt (s260388), Dahlia Louise Dry (s250127), Francesca Di Mella, Daniel Jason Cecil Phillips (s184796)
 
 - dashboard.py: GUI which pulls together all the separate analysis components
@@ -39,6 +40,7 @@ Go to http://127.0.0.1:8050/ in browser
 - `Export Detection CSV` downloads the current detection table as CSV and also updates `exports/detection_results.csv`.
 - Exported filenames include the uploaded filename stem and the active preprocessing filter name.
 - Validation state is included in exported detection rows through the `user_validated` column.
+- The exported csv files can be used as a means to label audio files for use as training data in future model development.
 
 ## Add/edit A Preprocessing Step
 All preprocessing is done through `preprocessing.py`.
@@ -116,8 +118,7 @@ CLASSIFICATION_MODELS = {
 ### 3) Use it in the dashboard
 `dashboard.py` automatically reads model names from `CLASSIFICATION_MODELS` and renders them as buttons in the `Detection & Classification` section.
 
-### Prediction Validation
-`dashboard.py` already converts this dict into the classification table and appends a `Validated` checkbox column for human 0/1 review.
-
 ## Troubleshooting
-Requires python < 3.14 for tensorflow to work
+- Requires python < 3.14 for tensorflow to work
+- difficulties encountered with conda installation; virtualenv is recommended
+- trim longer audio files before processing for better performance

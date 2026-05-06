@@ -1,3 +1,8 @@
+"""
+Preprocessing functions for whale sound analysis.
+Each function takes raw .wav bytes and returns processed .wav bytes.
+The dashboard.py will call `run_preprocessing_step` with the appropriate step name and parameters.
+"""
 from __future__ import annotations
 import io
 import librosa

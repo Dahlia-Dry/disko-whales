@@ -6,7 +6,7 @@ Tilde Marie Reinhardt (s260388), Dahlia Louise Dry (s250127), Francesca Di Mella
 - classification.py: classification model methods
 - disko_sound.py: class for feature extraction from .wav files & spectrogram plotting
 
-![Demo Video](https://youtu.be/QBNhz_jX0JY)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/QBNhz_jX0JY?si=o8ux3UdQG6IK4gwf" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
 
 ## Quick Start
 ### Install required packages

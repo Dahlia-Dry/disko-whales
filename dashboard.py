@@ -4,6 +4,8 @@ Disko Audio Explorer — Dash dashboard
   • Play it back in the browser
   • View the spectrogram
   • Box-select a time range on the spectrogram → run Disko_Sound analysis
+
+Author: @Dahlia Dry, April 2026
 """
 
 import base64

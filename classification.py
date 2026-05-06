@@ -1,6 +1,6 @@
-"""Classification model interface for dashboard.py.
+"""
+Classification model interface for dashboard.py.
 
-Contract:
 - Input: .wav file bytes
 - Output: dict with EXACT keys:
     {
@@ -8,11 +8,6 @@ Contract:
         'probability': [...],
         'predicted': [...],
     }
-
-This module is intentionally structured like preprocessing.py:
-- One function per model
-- A registry mapping model name -> function
-- One dispatcher (`run_classification_model`) used by dashboard.py
 """
 
 from __future__ import annotations

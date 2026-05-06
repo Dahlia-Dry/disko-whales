@@ -1,5 +1,6 @@
 """
 Disko_Sound: Acoustic feature extraction and analysis for whale sound classification
+Author: @Dahlia Dry, April 2026
 """
 
 import numpy as np
@@ -20,7 +21,6 @@ class Disko_Sound:
     - Frequency domain: dominant frequency, bandwidth, spectral centroid, spectral rolloff
     - Temporal: call duration, inter-call intervals, rhythm patterns
     - Energy: signal-to-noise ratio, amplitude envelope
-    - Advanced: MFCCs (Mel-frequency cepstral coefficients)
     """
     
     def __init__(self, wav_file_path, sr=None):

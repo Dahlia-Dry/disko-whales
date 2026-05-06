@@ -7,6 +7,7 @@ Tilde Marie Reinhardt (s260388), Dahlia Louise Dry (s250127), Francesca Di Mella
 - disko_sound.py: class for feature extraction from .wav files & spectrogram plotting
 
 Demo video:
+
 [![Watch the video](https://img.youtube.com/vi/QBNhz_jX0JY/hqdefault.jpg)](https://www.youtube.com/embed/QBNhz_jX0JY)
 
 ## Quick Start
